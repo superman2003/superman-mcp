@@ -35,12 +35,16 @@
         <div class="feedback" id="cfgFeedback"></div>
       </section>
 
-      <section class="section">
+      <section class="section" id="sendSection">
         <div class="section-title">发送消息 → <span id="sendTarget">MCP-1</span></div>
-        <textarea id="msgInput" class="textarea" rows="3" placeholder="输入要发给 Cursor AI 的内容..."></textarea>
+        <textarea id="msgInput" class="textarea" rows="3"
+          placeholder="输入要发给 Cursor AI 的内容...（Enter 发送，Shift+Enter 换行；可粘贴/拖拽图片）"></textarea>
+        <div class="attach-strip" id="attachStrip"></div>
+        <input type="file" id="filePick" multiple accept="image/*" style="display:none" />
         <div class="row">
           <button type="button" class="btn btn-primary" id="sendBtn">发送</button>
           <button type="button" class="btn" id="testHelloBtn">测试发送「你好」</button>
+          <button type="button" class="btn" id="pickImageBtn">添加图片</button>
           <button type="button" class="btn" id="copyHintBtn" title="复制让 AI 调用 check_messages 的指令">复制提示语</button>
           <label class="toggle" title="开启时会让 AI 把完整回复也镜像到桌面应用，关闭则只在 Cursor 对话窗口里看回复">
             <input type="checkbox" id="wantReplyToggle" checked />

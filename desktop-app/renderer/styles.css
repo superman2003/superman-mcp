@@ -207,6 +207,77 @@ body {
   cursor: pointer;
 }
 
+/* ----- Attachments ----- */
+.attach-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.attach-chip {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-primary);
+  flex-shrink: 0;
+}
+.attach-chip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.attach-chip-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  padding: 0;
+}
+.attach-chip-remove:hover { background: var(--error); }
+
+.msg-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.msg-images img {
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  cursor: zoom-in;
+  display: block;
+}
+.msg-user .msg-images img { border-color: rgba(0, 0, 0, 0.25); }
+
+body.dnd-active::after {
+  content: '松开以添加图片';
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(137, 180, 250, 0.18);
+  border: 2px dashed var(--accent);
+  font-size: 16px;
+  color: var(--accent);
+  pointer-events: none;
+  z-index: 999;
+}
+
 .hint {
   font-size: 11px;
   color: var(--text-muted);

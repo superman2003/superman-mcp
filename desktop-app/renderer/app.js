@@ -26,6 +26,9 @@ const els = {
     copyHintBtn: document.getElementById('copyHintBtn'),
     sendFeedback: document.getElementById('sendFeedback'),
     wantReplyToggle: document.getElementById('wantReplyToggle'),
+    pickImageBtn: document.getElementById('pickImageBtn'),
+    filePick: document.getElementById('filePick'),
+    attachStrip: document.getElementById('attachStrip'),
     sendTarget: document.getElementById('sendTarget'),
     activeMcpHint: document.getElementById('activeMcpHint'),
     hintPhrase: document.getElementById('hintPhrase'),
@@ -169,27 +172,148 @@ els.cfgBtn.addEventListener('click', async () => {
     addChatLine('system', `工作区已配置：${workspacePath}`);
 });
 
+/* ---------- Attachments (images) ---------- */
+
+const MAX_ATTACH_CHARS = Math.floor(2.5 * 1024 * 1024);
+let pendingAttachments = []; // { mimeType, data, dataUrl, name }
+
+function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = String(reader.result || '');
+            const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+            if (!m) return reject(new Error('图片读取失败'));
+            resolve({ mimeType: m[1], data: m[2], dataUrl, name: file.name || 'image' });
+        };
+        reader.onerror = () => reject(reader.error || new Error('读取错误'));
+        reader.readAsDataURL(file);
+    });
+}
+
+function totalAttachBytes(extra = 0) {
+    return pendingAttachments.reduce((s, a) => s + (a.data ? a.data.length : 0), 0) + extra;
+}
+
+async function addImageFiles(files) {
+    let added = 0;
+    for (const file of files) {
+        if (!file || !file.type || !file.type.startsWith('image/')) continue;
+        try {
+            const att = await readFileAsBase64(file);
+            if (totalAttachBytes(att.data.length) > MAX_ATTACH_CHARS) {
+                showFeedback(els.sendFeedback, 'error', '附件总体积超过约 2MB 上限');
+                break;
+            }
+            pendingAttachments.push(att);
+            added += 1;
+        } catch (err) {
+            showFeedback(els.sendFeedback, 'error', '图片读取失败：' + err.message);
+        }
+    }
+    if (added > 0) {
+        renderAttachStrip();
+        showFeedback(els.sendFeedback, 'info', `已添加 ${added} 张图片`);
+    }
+}
+
+function renderAttachStrip() {
+    if (!els.attachStrip) return;
+    els.attachStrip.innerHTML = '';
+    pendingAttachments.forEach((att, idx) => {
+        const chip = document.createElement('div');
+        chip.className = 'attach-chip';
+        const img = document.createElement('img');
+        img.src = att.dataUrl;
+        img.alt = att.name || '';
+        chip.appendChild(img);
+        const rm = document.createElement('button');
+        rm.className = 'attach-chip-remove';
+        rm.type = 'button';
+        rm.title = '移除';
+        rm.textContent = '×';
+        rm.addEventListener('click', () => {
+            pendingAttachments.splice(idx, 1);
+            renderAttachStrip();
+        });
+        chip.appendChild(rm);
+        els.attachStrip.appendChild(chip);
+    });
+}
+
+els.pickImageBtn.addEventListener('click', () => els.filePick.click());
+els.filePick.addEventListener('change', async e => {
+    const files = Array.from(e.target.files || []);
+    await addImageFiles(files);
+    els.filePick.value = '';
+});
+
+els.msgInput.addEventListener('paste', async e => {
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    const files = [];
+    for (const it of items) {
+        if (it.kind === 'file') {
+            const f = it.getAsFile();
+            if (f && f.type && f.type.startsWith('image/')) files.push(f);
+        }
+    }
+    if (files.length > 0) {
+        e.preventDefault();
+        await addImageFiles(files);
+    }
+});
+
+let dndCounter = 0;
+window.addEventListener('dragenter', e => {
+    if (!e.dataTransfer || !e.dataTransfer.types) return;
+    if (Array.from(e.dataTransfer.types).includes('Files')) {
+        dndCounter += 1;
+        document.body.classList.add('dnd-active');
+    }
+});
+window.addEventListener('dragleave', () => {
+    dndCounter = Math.max(0, dndCounter - 1);
+    if (dndCounter === 0) document.body.classList.remove('dnd-active');
+});
+window.addEventListener('dragover', e => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) e.preventDefault();
+});
+window.addEventListener('drop', async e => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) {
+        e.preventDefault();
+        dndCounter = 0;
+        document.body.classList.remove('dnd-active');
+        const files = Array.from(e.dataTransfer.files || []);
+        await addImageFiles(files);
+    }
+});
+
 /* ---------- Send ---------- */
 
 async function doSend(text) {
     const trimmed = String(text || '').trim();
-    if (!trimmed) {
-        showFeedback(els.sendFeedback, 'error', '请输入文字');
+    if (!trimmed && pendingAttachments.length === 0) {
+        showFeedback(els.sendFeedback, 'error', '请输入文字或添加图片');
         return;
     }
     showFeedback(els.sendFeedback, 'pending', '正在发送…', false);
     const wantReply = !!(els.wantReplyToggle && els.wantReplyToggle.checked);
+    const imagesPayload = pendingAttachments.map(a => ({ mimeType: a.mimeType, data: a.data }));
     const r = await api.messages.send({
         text: trimmed,
         sessionId: activeSessionId,
         workspacePath: state.workspacePath || els.pathInput.value.trim() || '',
         wantReply,
+        images: imagesPayload,
     });
     if (r.ok) {
         showFeedback(els.sendFeedback, 'success',
             `已发送到 MCP-${r.sessionId}！在对应 Cursor 对话中执行：「请使用 my-mcp-${r.sessionId} 的 check_messages」`);
-        addChatLine('user', trimmed);
+        const sentImages = pendingAttachments.map(a => ({ dataUrl: a.dataUrl, mimeType: a.mimeType }));
+        addChatLine('user', trimmed, undefined, sentImages);
         els.msgInput.value = '';
+        pendingAttachments = [];
+        renderAttachStrip();
     } else {
         showFeedback(els.sendFeedback, 'error', r.message || '发送失败');
     }
@@ -197,11 +321,14 @@ async function doSend(text) {
 
 els.sendBtn.addEventListener('click', () => doSend(els.msgInput.value));
 els.testHelloBtn.addEventListener('click', () => doSend('你好'));
+
+// Enter 发送，Shift+Enter 换行；中文输入法 compose 中的回车不触发发送
 els.msgInput.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        doSend(els.msgInput.value);
-    }
+    if (e.key !== 'Enter') return;
+    if (e.isComposing || e.keyCode === 229) return; // 输入法占用回车
+    if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return; // 让组合键产生换行
+    e.preventDefault();
+    doSend(els.msgInput.value);
 });
 
 els.copyHintBtn.addEventListener('click', async () => {
@@ -216,41 +343,80 @@ function ensureHistoryBucket(sid) {
     return state.histories[sid];
 }
 
-function addChatLine(type, content, time) {
+function addChatLine(type, content, time, images) {
     const hist = ensureHistoryBucket(activeSessionId);
-    hist.push({ type, content, time: time || new Date().toISOString() });
+    hist.push({
+        type,
+        content: content || '',
+        time: time || new Date().toISOString(),
+        images: Array.isArray(images) && images.length ? images : undefined,
+    });
     persistHistories();
     renderChat();
 }
 
 function persistHistories() {
-    api.state.save({ histories: state.histories }).then(s => { state = s; }).catch(() => {});
+    // 不把图片 base64 写到磁盘，避免 ~/.superman-mcp-desktop.json 体积爆炸；重启后图片不再显示
+    const stripped = {};
+    for (const sid of Object.keys(state.histories)) {
+        stripped[sid] = (state.histories[sid] || []).map(m => {
+            if (m.images && m.images.length) {
+                return { type: m.type, content: m.content, time: m.time, hasImages: true };
+            }
+            return { type: m.type, content: m.content, time: m.time };
+        });
+    }
+    api.state.save({ histories: stripped }).then(s => {
+        // 保留 in-memory 的完整版本（含 dataUrl），不要被 main 返回的 stripped 版覆盖
+        const fresh = { ...s, histories: state.histories };
+        state = fresh;
+    }).catch(() => {});
 }
 
 function renderChat() {
     const hist = ensureHistoryBucket(activeSessionId);
+    els.chat.innerHTML = '';
     if (hist.length === 0) {
-        els.chat.innerHTML = '';
         const empty = document.createElement('div');
         empty.className = 'empty';
         empty.textContent = '暂无消息，发送内容后 Cursor 中的 AI 会回复到这里';
         els.chat.appendChild(empty);
         return;
     }
-    els.chat.innerHTML = '';
     hist.forEach(m => {
         const wrap = document.createElement('div');
         wrap.className = 'msg msg-' + m.type;
-        const body = document.createElement('div');
-        body.textContent = m.content;
-        wrap.appendChild(body);
+        if (m.content) {
+            const body = document.createElement('div');
+            body.textContent = m.content;
+            wrap.appendChild(body);
+        }
+        if (m.images && m.images.length) {
+            const grid = document.createElement('div');
+            grid.className = 'msg-images';
+            m.images.forEach(img => {
+                if (!img || !img.dataUrl) return;
+                const el = document.createElement('img');
+                el.src = img.dataUrl;
+                el.alt = '';
+                el.title = '点击在系统查看器中放大';
+                el.addEventListener('click', () => {
+                    // 临时新窗口预览（最简单做法）
+                    const w = window.open('', '_blank');
+                    if (w) w.document.write(`<img src="${img.dataUrl}" style="max-width:100%;max-height:100%" />`);
+                });
+                grid.appendChild(el);
+            });
+            wrap.appendChild(grid);
+        } else if (m.hasImages) {
+            const note = document.createElement('div');
+            note.className = 'msg-time';
+            note.textContent = '（图片在重启后不再保留）';
+            wrap.appendChild(note);
+        }
         const t = document.createElement('div');
         t.className = 'msg-time';
-        try {
-            t.textContent = new Date(m.time).toLocaleTimeString();
-        } catch {
-            t.textContent = '';
-        }
+        try { t.textContent = new Date(m.time).toLocaleTimeString(); } catch { t.textContent = ''; }
         wrap.appendChild(t);
         els.chat.appendChild(wrap);
     });
