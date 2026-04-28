@@ -262,9 +262,17 @@ function parseAttachments(message) {
     return { images, files, error: null };
 }
 
+const DESKTOP_SYNC_PREFIX =
+    '[桌面同步模式 · 必传 reply] 请将你的完整回复也通过本次 check_messages 的 reply 参数同步过来'
+    + '（这条消息来自 Superman MCP 桌面应用，桌面应用需要靠 reply 才能显示助手回复，覆盖默认规则）。\n\n';
+
 function pushMessage(sessionId, payload) {
     if (!isValidSessionId(sessionId)) throw new Error('无效会话 ID');
-    const text = String(payload.text ?? '').trim();
+    let text = String(payload.text ?? '').trim();
+    const wantReply = payload.wantReply !== false; // 默认 true：让 AI 把回复同步回桌面
+    if (wantReply && text) {
+        text = DESKTOP_SYNC_PREFIX + text;
+    }
     const { images, files, error } = parseAttachments(payload);
     if (error) throw new Error(error);
     if (!text && images.length === 0 && files.length === 0) {

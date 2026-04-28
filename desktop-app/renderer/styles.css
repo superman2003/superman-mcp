@@ -192,6 +192,21 @@ body {
 .btn-primary:hover { background: var(--accent-hover); }
 .btn-small { padding: 4px 10px; font-size: 11px; }
 
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  margin-left: auto;
+}
+.toggle input[type=checkbox] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .hint {
   font-size: 11px;
   color: var(--text-muted);

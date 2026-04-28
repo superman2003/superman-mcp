@@ -25,6 +25,7 @@ const els = {
     testHelloBtn: document.getElementById('testHelloBtn'),
     copyHintBtn: document.getElementById('copyHintBtn'),
     sendFeedback: document.getElementById('sendFeedback'),
+    wantReplyToggle: document.getElementById('wantReplyToggle'),
     sendTarget: document.getElementById('sendTarget'),
     activeMcpHint: document.getElementById('activeMcpHint'),
     hintPhrase: document.getElementById('hintPhrase'),
@@ -177,10 +178,12 @@ async function doSend(text) {
         return;
     }
     showFeedback(els.sendFeedback, 'pending', '正在发送…', false);
+    const wantReply = !!(els.wantReplyToggle && els.wantReplyToggle.checked);
     const r = await api.messages.send({
         text: trimmed,
         sessionId: activeSessionId,
         workspacePath: state.workspacePath || els.pathInput.value.trim() || '',
+        wantReply,
     });
     if (r.ok) {
         showFeedback(els.sendFeedback, 'success',
