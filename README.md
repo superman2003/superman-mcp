@@ -1,4 +1,4 @@
-# Infinity-MCP（Infinity助手 / Cursor Free Plus）
+# Superman MCP
 
 > ## ⚠️ 免责声明（请务必阅读）
 >
@@ -13,7 +13,7 @@
 
 ---
 
-**免卡密版 Cursor 增强插件 · Infinity 助手**，基于 [`a78789191888/wkmcp-pjb`](https://github.com/a78789191888/wkmcp-pjb) 复刻并增强，
+**免卡密版 Cursor 增强插件 · Superman MCP**，基于 [`a78789191888/wkmcp-pjb`](https://github.com/a78789191888/wkmcp-pjb) 复刻并增强，
 在保留其**全部侧栏多会话 MCP 功能**的同时，内置 **Cursor 会员类型切换器**（独立页面，点击跳转；原 `Cursor Membership Switcher` 项目功能移植）。
 
 插件不再依赖任何卡密/激活码/试用期，打开即用。
@@ -85,19 +85,19 @@ cursor-free-plus-1.4.0.vsix   （版本号取自 package.json 的 "version"）
 
 ## 使用
 
-1. 安装后左侧活动栏会出现 **Infinity助手** 图标，点开即是侧栏
+1. 安装后左侧活动栏会出现 **Superman MCP** 图标，点开即是侧栏
 2. 填写工作区路径或「使用当前」，点「开始配置」即可写入 `.cursor/mcp.json`
 3. 点击「Cursor 会员类型 → 打开会员类型设置」按钮，在新页面里选择类型并「应用补丁」
 4. 补丁完成后点「重启 Cursor」，重启后生效
 
 ## 命令面板
 
-- `Infinity助手: 配置工作区（MCP）`
-- `Infinity助手: 打开会员类型设置`
-- `Infinity助手: 打开账单与用量`
-- `Infinity助手: 应用会员补丁`
-- `Infinity助手: 恢复原始会员文件`
-- `Infinity助手: 检测 Cursor 安装路径`
+- `Superman MCP: 配置工作区（MCP）`
+- `Superman MCP: 打开会员类型设置`
+- `Superman MCP: 打开账单与用量`
+- `Superman MCP: 应用会员补丁`
+- `Superman MCP: 恢复原始会员文件`
+- `Superman MCP: 检测 Cursor 安装路径`
 
 ## 配置项
 

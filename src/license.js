@@ -6,7 +6,7 @@
  * 的现有调用不需要改动；所有校验/吊销/过期清理都被替换成 no-op，
  * 「是否激活」统一返回永久有效。
  *
- * 这样做的目的：让 Infinity助手 插件完全免卡密，一律按「已激活 · 永久」呈现。
+ * 这样做的目的：让 Superman MCP 插件完全免卡密，一律按「已激活 · 永久」呈现。
  */
 
 const crypto = require("crypto");
@@ -60,17 +60,17 @@ function getLicenseStatusForWebview() {
 exports.getLicenseStatusForWebview = getLicenseStatusForWebview;
 
 async function tryActivateLicenseAsync() {
-    return { ok: true, msg: "无需激活，Infinity助手 已默认启用" };
+    return { ok: true, msg: "无需激活，Superman MCP 已默认启用" };
 }
 exports.tryActivateLicenseAsync = tryActivateLicenseAsync;
 
 function tryActivateLicense() {
-    return { ok: true, msg: "无需激活，Infinity助手 已默认启用" };
+    return { ok: true, msg: "无需激活，Superman MCP 已默认启用" };
 }
 exports.tryActivateLicense = tryActivateLicense;
 
 function tryStartTrial30() {
-    return { ok: true, msg: "无需试用，Infinity助手 已默认启用" };
+    return { ok: true, msg: "无需试用，Superman MCP 已默认启用" };
 }
 exports.tryStartTrial30 = tryStartTrial30;
 

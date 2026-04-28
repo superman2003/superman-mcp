@@ -4,7 +4,7 @@ globs:
 alwaysApply: true
 ---
 
-# Infinity助手 多会话规则
+# Superman MCP 多会话规则
 
 侧栏可「添加/删除会话」管理通道（最多 **32** 路）。点击 **「开始配置」** 时，仅按**当前侧栏会话列表**在本工作区 `mcp.json` 写入对应的 **my-mcp-N**；**增删会话后必须再次配置**，否则 Cursor 里 MCP 列表与插件不一致。每个 Cursor 对话窗口只绑定其中一个 **my-mcp-N**。
 

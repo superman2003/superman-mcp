@@ -1,7 +1,7 @@
 {
 	"name": "cursor-free-plus",
-	"displayName": "Infinity助手",
-	"description": "Infinity 助手：免卡密版 Cursor 增强插件。侧栏多路 MCP（check_messages/send_message/ask_question，多窗口独立会话），内置 Cursor 会员类型切换器（Free/Pro/Pro+/Ultra/Enterprise 一键补丁，独立设置页面）。",
+	"displayName": "Superman MCP",
+	"description": "Superman MCP：Cursor 侧栏多路 MCP（check_messages / send_message / ask_question，多窗口独立会话），并附带会员类型与账单相关工具页（仅供学习研究，请遵守 Cursor 服务条款）。",
 	"version": "1.4.0",
 	"publisher": "cursor-free",
 	"license": "MIT",
@@ -14,7 +14,6 @@
 		"membership",
 		"cursor-free",
 		"wukong",
-		"悟空",
 		"chat",
 		"check_messages"
 	],
@@ -39,36 +38,36 @@
 			{
 				"command": "my.cursorMyUi.configureWorkspace",
 				"title": "配置工作区（MCP）",
-				"category": "Infinity助手"
+				"category": "Superman MCP"
 			},
 			{
 				"command": "cursorFree.applyMembershipPatch",
 				"title": "应用会员补丁",
-				"category": "Infinity助手"
+				"category": "Superman MCP"
 			},
 			{
 				"command": "cursorFree.restoreMembership",
 				"title": "恢复原始会员文件",
-				"category": "Infinity助手"
+				"category": "Superman MCP"
 			},
 			{
 				"command": "cursorFree.detectCursorPath",
 				"title": "检测 Cursor 安装路径",
-				"category": "Infinity助手"
+				"category": "Superman MCP"
 			},
 			{
 				"command": "cursorFree.openMembershipPage",
 				"title": "打开会员类型设置",
-				"category": "Infinity助手"
+				"category": "Superman MCP"
 			},
 			{
 				"command": "cursorFree.openBillingPage",
 				"title": "打开账单与用量",
-				"category": "Infinity助手"
+				"category": "Superman MCP"
 			}
 		],
 		"configuration": {
-			"title": "Infinity助手",
+			"title": "Superman MCP",
 			"properties": {
 				"wukong.licenseSecret": {
 					"type": "string",
@@ -129,7 +128,7 @@
 			"activitybar": [
 				{
 					"id": "wukong-mcp",
-					"title": "Infinity助手",
+					"title": "Superman MCP",
 					"icon": "resources/icon.svg"
 				}
 			]
@@ -139,7 +138,7 @@
 				{
 					"type": "webview",
 					"id": "my.cursorMyUi",
-					"name": "Infinity助手"
+					"name": "Superman MCP"
 				}
 			]
 		}

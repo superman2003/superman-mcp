@@ -297,7 +297,7 @@ globs:
 alwaysApply: true
 ---
 
-# Infinity助手 多会话规则
+# Superman MCP 多会话规则
 
 侧栏可「添加/删除会话」管理通道（最多 **${MAX_WUKONG_SESSIONS}** 路）。点击 **「开始配置」** 时，仅按**当前侧栏会话列表**在本工作区 \`mcp.json\` 写入对应的 **my-mcp-N**；**增删会话后必须再次配置**，否则 Cursor 里 MCP 列表与插件不一致。每个 Cursor 对话窗口只绑定其中一个 **my-mcp-N**。
 
@@ -328,7 +328,7 @@ check_messages → 收到插件消息 → 【Cursor 完整回复】→ check_mes
         if (typeof adminPwd === "string" && adminPwd.trim().length > 0) {
             const pw = await vscode.window.showInputBox({
                 password: true,
-                title: "Infinity助手 管理员",
+                title: "Superman MCP 管理员",
                 prompt: "请输入管理员密码",
             });
             if (pw !== adminPwd) {
@@ -341,7 +341,7 @@ check_messages → 收到插件消息 → 【Cursor 完整回复】→ check_mes
             { label: "$(calendar) 天卡", description: "激活后 24 小时", dur: "1d" },
             { label: "$(clock) 小时卡", description: "激活后 1 小时", dur: "1h" },
             { label: "$(watch) 自定义时长", description: "指定分钟数（激活后起算）", dur: "timed" },
-        ], { placeHolder: "选择卡密类型", title: "生成 Infinity助手 卡密" });
+        ], { placeHolder: "选择卡密类型", title: "生成 Superman MCP 卡密" });
         if (!pick)
             return;
         const secret = (0, license_1.getLicenseSecret)();
@@ -378,7 +378,7 @@ check_messages → 收到插件消息 → 【Cursor 完整回复】→ check_mes
         if (typeof adminPwd === "string" && adminPwd.trim().length > 0) {
             const pw = await vscode.window.showInputBox({
                 password: true,
-                title: "Infinity助手",
+                title: "Superman MCP",
                 prompt: "请输入管理员密码",
             });
             if (pw !== adminPwd) {
@@ -412,7 +412,7 @@ check_messages → 收到插件消息 → 【Cursor 完整回复】→ check_mes
             try { membershipPanel.reveal(vscode.ViewColumn.Active); } catch { /* ignore */ }
             return;
         }
-        const panel = vscode.window.createWebviewPanel("cursorFreeMembership", "Infinity助手 · 会员类型设置", vscode.ViewColumn.Active, {
+        const panel = vscode.window.createWebviewPanel("cursorFreeMembership", "Superman MCP · 会员类型设置", vscode.ViewColumn.Active, {
             enableScripts: true,
             retainContextWhenHidden: true,
             localResourceRoots: [context.extensionUri],
@@ -667,7 +667,7 @@ check_messages → 收到插件消息 → 【Cursor 完整回复】→ check_mes
             try { billingPanel.reveal(vscode.ViewColumn.Active); } catch { /* ignore */ }
             return;
         }
-        const panel = vscode.window.createWebviewPanel("cursorFreeBilling", "Infinity助手 · 账单与用量", vscode.ViewColumn.Active, {
+        const panel = vscode.window.createWebviewPanel("cursorFreeBilling", "Superman MCP · 账单与用量", vscode.ViewColumn.Active, {
             enableScripts: true,
             retainContextWhenHidden: true,
             localResourceRoots: [context.extensionUri],
@@ -1367,7 +1367,7 @@ function getHtml(webview, nonce, extensionVersion, payStoreUrl) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
-  <title>Infinity助手</title>
+  <title>Superman MCP</title>
   <style>
     :root {
       --bg-primary: #1e1e2e;
@@ -2234,12 +2234,12 @@ function getHtml(webview, nonce, extensionVersion, payStoreUrl) {
 <body>
   <div id="licenseGate" class="license-gate">
     <div class="license-gate-head">
-      <div class="license-logo">Infinity助手</div>
+      <div class="license-logo">Superman MCP</div>
       <span class="header-version" title="扩展版本">v${extensionVersion}</span>
     </div>
     <p class="license-desc"><strong>多项目、多窗口</strong>一起用：侧栏多路 MCP，各绑独立通道，<strong>稳定不断连</strong>。支持<strong>免费试用 30 分钟</strong>（每机一次），<strong>好用再下单</strong>。下方粘贴卡密激活即可。</p>
     <div class="license-pay-strip">
-      <div class="license-pay-title">Infinity助手 · 赞助/购买</div>
+      <div class="license-pay-title">Superman MCP · 赞助/购买</div>
       <div class="license-pay-url" id="payStoreUrlDisplay">${payUrlDisplay}</div>
       <button type="button" class="btn-pay-store" id="openPayStoreBtn" title="在系统浏览器中打开支付页">在浏览器打开支付页</button>
     </div>
@@ -2267,7 +2267,7 @@ function getHtml(webview, nonce, extensionVersion, payStoreUrl) {
   <div class="rail-resizer" id="railResizer" title="拖动调整会话栏宽度" role="separator" aria-orientation="vertical"></div>
   <div class="app-main">
   <div class="header">
-    <h2>Infinity助手</h2>
+    <h2>Superman MCP</h2>
     <span class="header-version" id="extVersionBadge" title="扩展版本">v${extensionVersion}</span>
     <div class="status-dot" id="statusDot" title="连接状态"></div>
     <span id="activeMcpHint" class="hint" style="margin-left:auto;font-size:10px;">当前：MCP-1</span>
@@ -2395,7 +2395,7 @@ function getHtml(webview, nonce, extensionVersion, payStoreUrl) {
     <div class="help-overlay-backdrop" id="helpBackdrop" aria-hidden="true"></div>
     <div class="help-panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
       <div class="help-panel-header">
-        <h3 id="helpTitle">Infinity助手 使用说明</h3>
+        <h3 id="helpTitle">Superman MCP 使用说明</h3>
         <button type="button" class="btn-close-help" id="closeHelpBtn">关闭</button>
       </div>
       <div class="help-panel-body">
@@ -2506,7 +2506,7 @@ function getHtml(webview, nonce, extensionVersion, payStoreUrl) {
     })();
     applyLicenseShell(true, '');
 
-    // ============== Infinity助手 · 会员类型 / 账单入口 ==============
+    // ============== Superman MCP · 会员类型 / 账单入口 ==============
     var msOpenPanelBtn = document.getElementById('msOpenPanelBtn');
     if (msOpenPanelBtn) {
       msOpenPanelBtn.addEventListener('click', function () {
@@ -3306,7 +3306,7 @@ function getMembershipPanelHtml(webview, nonce) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
-  <title>Infinity助手 · 会员类型设置</title>
+  <title>Superman MCP · 会员类型设置</title>
   <style>
     :root {
       --bg-primary: #1e1e2e;
@@ -3617,7 +3617,7 @@ function getBillingPanelHtml(webview, nonce) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
-  <title>Infinity助手 · 账单与用量</title>
+  <title>Superman MCP · 账单与用量</title>
   <style>
     :root {
       --bg-primary: #1e1e2e;
