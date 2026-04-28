@@ -18,6 +18,7 @@ const els = {
     pathInput: document.getElementById('pathInput'),
     browseBtn: document.getElementById('browseBtn'),
     cfgBtn: document.getElementById('cfgBtn'),
+    autoDetectBtn: document.getElementById('autoDetectBtn'),
     cfgFeedback: document.getElementById('cfgFeedback'),
     msgInput: document.getElementById('msgInput'),
     sendBtn: document.getElementById('sendBtn'),
@@ -126,6 +127,21 @@ els.browseBtn.addEventListener('click', async () => {
     els.pathInput.value = r.path;
     showFeedback(els.cfgFeedback, 'info', '已选择：' + r.path);
 });
+
+async function tryAutoDetect(silent) {
+    const r = await api.workspace.detectRecent();
+    if (r && r.ok) {
+        els.pathInput.value = r.path;
+        showFeedback(els.cfgFeedback, 'info', `已自动填入（来源：${r.source}）：${r.path}`);
+        return true;
+    }
+    if (!silent) {
+        showFeedback(els.cfgFeedback, 'error', '没找到最近的 Cursor 工作区，请手动「浏览…」选择');
+    }
+    return false;
+}
+
+els.autoDetectBtn.addEventListener('click', () => tryAutoDetect(false));
 
 els.cfgBtn.addEventListener('click', async () => {
     const workspacePath = els.pathInput.value.trim();
@@ -266,6 +282,10 @@ api.messages.onCursorReply(({ sessionId, reply, time }) => {
     if (state.workspacePath) els.pathInput.value = state.workspacePath;
     renderSessions();
     renderChat();
+    if (!els.pathInput.value.trim()) {
+        // 静默自动检测一次：用户没保存过工作区时，尝试从 ~/.cursor 与 Cursor storage.json 推断
+        await tryAutoDetect(true);
+    }
 })();
 
 els.addSessionBtn.addEventListener('click', addSession);

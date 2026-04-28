@@ -312,6 +312,59 @@ function registerIpc() {
     ipcMain.handle('state:load', async () => loadDesktopState());
     ipcMain.handle('state:save', async (_e, patch) => saveDesktopState(patch || {}));
 
+    ipcMain.handle('workspace:detectRecent', async () => {
+        // 1) 来自任何一次「开始配置」操作（桌面或插件版）写入的 workspace.json
+        try {
+            const wsInfoPath = path.join(QUEUE_ROOT, 'workspace.json');
+            if (fs.existsSync(wsInfoPath)) {
+                const obj = JSON.parse(fs.readFileSync(wsInfoPath, 'utf-8'));
+                if (typeof obj.workspacePath === 'string'
+                    && obj.workspacePath.trim()
+                    && fs.existsSync(obj.workspacePath)) {
+                    return { ok: true, source: 'mcp-messages/workspace.json', path: obj.workspacePath };
+                }
+            }
+        } catch {
+            /* ignore */
+        }
+        // 2) Cursor 最近工作区列表
+        const candidates = [
+            path.join(os.homedir(), 'AppData', 'Roaming', 'Cursor', 'User', 'globalStorage', 'storage.json'),
+            path.join(os.homedir(), 'AppData', 'Roaming', 'Cursor', 'storage.json'),
+        ];
+        for (const file of candidates) {
+            try {
+                if (!fs.existsSync(file)) continue;
+                const obj = JSON.parse(fs.readFileSync(file, 'utf-8'));
+                const collect = [];
+                const seen = new Set();
+                const visit = node => {
+                    if (!node || seen.has(node)) return;
+                    if (typeof node === 'object') {
+                        seen.add(node);
+                        if (typeof node.folderUri === 'string') collect.push(node.folderUri);
+                        if (typeof node.configPath === 'string') collect.push(node.configPath);
+                        for (const v of Object.values(node)) visit(v);
+                    }
+                };
+                visit(obj);
+                for (const raw of collect) {
+                    let p = raw;
+                    if (p.startsWith('file:///')) {
+                        try { p = decodeURIComponent(new URL(p).pathname.replace(/^\//, '')); } catch { /* ignore */ }
+                    }
+                    p = p.replace(/\//g, path.sep);
+                    if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
+                        return { ok: true, source: path.basename(file), path: p };
+                    }
+                }
+            } catch {
+                /* ignore */
+            }
+        }
+        return { ok: false };
+    });
+
     ipcMain.handle('workspace:pick', async () => {
         const r = await dialog.showOpenDialog(mainWindow, {
             properties: ['openDirectory'],

@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('supermanApi', {
     workspace: {
         pick: () => ipcRenderer.invoke('workspace:pick'),
         configure: payload => ipcRenderer.invoke('workspace:configure', payload),
+        detectRecent: () => ipcRenderer.invoke('workspace:detectRecent'),
     },
     messages: {
         send: payload => ipcRenderer.invoke('messages:send', payload),
