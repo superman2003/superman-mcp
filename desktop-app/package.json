@@ -1,0 +1,45 @@
+{
+  "name": "superman-mcp-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Superman MCP 桌面应用（独立窗口对话，不依赖 Cursor 侧栏）",
+  "main": "main.js",
+  "author": "superman2003",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.0.2",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.superman.mcp.desktop",
+    "productName": "Superman MCP",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*"
+    ],
+    "directories": {
+      "output": "out"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    }
+  }
+}

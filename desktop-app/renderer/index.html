@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <title>Superman MCP</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="rail" id="sessionRail">
+      <div class="rail-title">会话</div>
+      <div id="sessionList"></div>
+      <button type="button" class="btn-add" id="addSessionBtn">+ 添加会话</button>
+      <div class="rail-hint">每路对应 my-mcp-N。增删后请重新点「开始配置」。</div>
+    </aside>
+
+    <main class="main">
+      <header class="header">
+        <h2>Superman MCP</h2>
+        <span class="version" id="version">桌面版</span>
+        <span class="active-mcp" id="activeMcpHint">当前：MCP-1</span>
+      </header>
+
+      <section class="section">
+        <div class="section-title">工作区配置</div>
+        <div class="row">
+          <input type="text" id="pathInput" class="input" placeholder="选择或输入工作区路径..." />
+          <button type="button" class="btn" id="browseBtn">浏览…</button>
+          <button type="button" class="btn btn-primary" id="cfgBtn">开始配置</button>
+        </div>
+        <div class="feedback" id="cfgFeedback"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">发送消息 → <span id="sendTarget">MCP-1</span></div>
+        <textarea id="msgInput" class="textarea" rows="3" placeholder="输入要发给 Cursor AI 的内容..."></textarea>
+        <div class="row">
+          <button type="button" class="btn btn-primary" id="sendBtn">发送</button>
+          <button type="button" class="btn" id="testHelloBtn">测试发送「你好」</button>
+          <button type="button" class="btn" id="copyHintBtn" title="复制让 AI 调用 check_messages 的指令">复制提示语</button>
+        </div>
+        <div class="hint">
+          <code id="hintPhrase">请使用 my-mcp-1 的 check_messages</code>
+        </div>
+        <div class="feedback" id="sendFeedback"></div>
+      </section>
+
+      <section class="section section-grow">
+        <div class="section-head">
+          <div class="section-title">对话记录</div>
+          <button type="button" class="btn btn-small" id="clearChatBtn">清空记录</button>
+        </div>
+        <div class="chat" id="chat">
+          <div class="empty" id="emptyState">暂无消息，发送内容后 Cursor 中的 AI 会回复到这里</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

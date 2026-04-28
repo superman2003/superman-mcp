@@ -85,6 +85,8 @@ cursor-free-plus-1.4.0.vsix   （版本号取自 package.json 的 "version"）
 
 ## 使用
 
+> 也可以**完全脱离 Cursor**，使用独立桌面应用，详见 [`desktop-app/README.md`](./desktop-app/README.md)。
+
 1. 安装后左侧活动栏会出现 **Superman MCP** 图标，点开即是侧栏
 2. （可选）如果你更习惯大窗口：命令面板运行 **`Superman MCP: 打开主面板（独立页签）`**，会在编辑区打开与侧栏相同的主界面（可拖拽分屏，和代码并排看）
 3. 填写工作区路径或「使用当前」，点「开始配置」即可写入 `.cursor/mcp.json`
