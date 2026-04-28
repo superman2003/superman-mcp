@@ -91,6 +91,12 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+    mainWindow.once('ready-to-show', () => {
+        if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+        }
+    });
 
     mainWindow.on('closed', () => {
         mainWindow = null;
@@ -269,7 +275,7 @@ const DESKTOP_SYNC_PREFIX =
 function pushMessage(sessionId, payload) {
     if (!isValidSessionId(sessionId)) throw new Error('无效会话 ID');
     let text = String(payload.text ?? '').trim();
-    const wantReply = payload.wantReply !== false; // 默认 true：让 AI 把回复同步回桌面
+    const wantReply = payload.wantReply === true; // 默认 false：AI 回复留在 Cursor 窗口
     if (wantReply && text) {
         text = DESKTOP_SYNC_PREFIX + text;
     }
