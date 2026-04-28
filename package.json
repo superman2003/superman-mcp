@@ -27,6 +27,7 @@
 	"activationEvents": [
 		"onView:my.cursorMyUi",
 		"onCommand:my.cursorMyUi.configureWorkspace",
+		"onCommand:my.cursorMyUi.openMainPanel",
 		"onCommand:cursorFree.applyMembershipPatch",
 		"onCommand:cursorFree.restoreMembership",
 		"onCommand:cursorFree.detectCursorPath",
@@ -38,6 +39,11 @@
 			{
 				"command": "my.cursorMyUi.configureWorkspace",
 				"title": "配置工作区（MCP）",
+				"category": "Superman MCP"
+			},
+			{
+				"command": "my.cursorMyUi.openMainPanel",
+				"title": "打开主面板（独立页签）",
 				"category": "Superman MCP"
 			},
 			{

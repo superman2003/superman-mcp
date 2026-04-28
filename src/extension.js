@@ -36,6 +36,8 @@ const cursor_billing_1 = require("./cursor-billing");
 const BILLING_CACHE_KEY = "cursorFree.billing.cache.v1";
 const BILLING_FETCHED_FLAG_KEY = "cursorFree.billing.fetchedFromApi.v1";
 const viewType = "my.cursorMyUi";
+/** 独立主面板（编辑器区域 WebviewPanel），避免只能挤在侧栏 */
+let mainSupermanPanel = undefined;
 /** MCP 在 mcp.json 中最多注册数量（与 my-mcp-1 … my-mcp-N 一致） */
 const MAX_WUKONG_SESSIONS = 32;
 const DEFAULT_SESSION_ORDER = ["1", "2", "3"];
@@ -201,6 +203,501 @@ function recognizeSpeechWindows(timeoutMs) {
         });
     });
 }
+/**
+ * 侧栏 WebviewView 与独立 WebviewPanel 共用的主界面逻辑（消息队列轮询 + postMessage 处理）。
+ * 注意：同进程里如果同时打开侧栏与独立面板，会各自维护一套轮询（通常只开其一即可）。
+ */
+function attachMainWebviewApp(context, webview) {
+    const queueDirFixed = path.join(os.homedir(), ".cursor", "my-mcp-messages");
+    const lastReplyBySession = {};
+    for (let n = 1; n <= MAX_WUKONG_SESSIONS; n++) {
+        lastReplyBySession[String(n)] = "";
+    }
+    const pollIntervalMs = 800;
+    const intervalId = setInterval(() => {
+        for (let n = 1; n <= MAX_WUKONG_SESSIONS; n++) {
+            const sid = String(n);
+            try {
+                const replyPath = path.join(queueDirFixed, "s", sid, "reply.json");
+                if (!fs.existsSync(replyPath))
+                    continue;
+                const raw = fs.readFileSync(replyPath, "utf-8");
+                const parsed = JSON.parse(raw);
+                const ts = String(parsed.timestamp ?? "");
+                if (!ts || ts === lastReplyBySession[sid])
+                    continue;
+                lastReplyBySession[sid] = ts;
+                const reply = String(parsed.reply ?? "");
+                webview.postMessage({
+                    command: "cursorReply",
+                    reply,
+                    time: ts,
+                    sessionId: sid,
+                });
+                try {
+                    fs.unlinkSync(replyPath);
+                }
+                catch {
+                    // ignore
+                }
+            }
+            catch {
+                // ignore
+            }
+        }
+    }, pollIntervalMs);
+    const sessionOrder = readSessionOrder(context);
+    setTimeout(() => {
+        webview.postMessage({ command: "restoreSessionOrder", order: sessionOrder });
+        webview.postMessage({ command: "restoreSessionMemos", memos: readSessionMemos(context) });
+    }, 50);
+    const savedHist = context.globalState.get(GLOBAL_STATE_SESSION_KEY);
+    if (savedHist) {
+        setTimeout(() => {
+            webview.postMessage({ command: "restoreHistories", payload: savedHist });
+        }, 100);
+    }
+    const disposable = webview.onDidReceiveMessage(async (message) => {
+        if (!message || typeof message !== "object")
+            return;
+        const cmd = message.command;
+        const cmdStr = typeof cmd === "string" ? cmd : "";
+        if (cmdStr === "requestLicenseStatus") {
+            (0, license_1.clearExpiredLicenseIfNeeded)(context);
+            (0, license_1.clearExpiredTrialIfNeeded)(context);
+            await (0, license_1.enforceCloudLicenseRevocationCheck)(context);
+            (0, license_1.clearExpiredLicenseIfNeeded)(context);
+            webview.postMessage({
+                command: "licenseStatus",
+                ...(0, license_1.getLicenseStatusForWebview)(context),
+            });
+            return;
+        }
+        if (cmdStr === "activateLicense") {
+            const key = String(message.key ?? "");
+            const r = await (0, license_1.tryActivateLicenseAsync)(context, key);
+            webview.postMessage({
+                command: "licenseActivationResult",
+                ok: r.ok,
+                msg: r.msg,
+            });
+            if (r.ok) {
+                webview.postMessage({
+                    command: "licenseStatus",
+                    ...(0, license_1.getLicenseStatusForWebview)(context),
+                });
+                const ord = readSessionOrder(context);
+                webview.postMessage({ command: "restoreSessionOrder", order: ord });
+                webview.postMessage({ command: "restoreSessionMemos", memos: readSessionMemos(context) });
+                const hist = context.globalState.get(GLOBAL_STATE_SESSION_KEY);
+                if (hist) {
+                    webview.postMessage({ command: "restoreHistories", payload: hist });
+                }
+            }
+            return;
+        }
+        if (cmdStr === "startTrial30") {
+            const r = (0, license_1.tryStartTrial30)(context);
+            webview.postMessage({
+                command: "trialResult",
+                ok: r.ok,
+                msg: r.msg,
+            });
+            if (r.ok) {
+                webview.postMessage({
+                    command: "licenseStatus",
+                    ...(0, license_1.getLicenseStatusForWebview)(context),
+                });
+                const ord = readSessionOrder(context);
+                webview.postMessage({ command: "restoreSessionOrder", order: ord });
+                webview.postMessage({ command: "restoreSessionMemos", memos: readSessionMemos(context) });
+                const hist = context.globalState.get(GLOBAL_STATE_SESSION_KEY);
+                if (hist) {
+                    webview.postMessage({ command: "restoreHistories", payload: hist });
+                }
+            }
+            return;
+        }
+        if (cmdStr === "deactivateLicense") {
+            const choice = await vscode.window.showWarningMessage("确定注销激活？清除后需重新输入卡密才能使用本扩展。", { modal: true }, "确定注销");
+            if (choice !== "确定注销") {
+                return;
+            }
+            await (0, license_1.clearLicenseState)(context);
+            await (0, license_1.clearTrialUntilState)(context);
+            webview.postMessage({
+                command: "licenseStatus",
+                ...(0, license_1.getLicenseStatusForWebview)(context),
+            });
+            void vscode.window.showInformationMessage("已注销激活");
+            return;
+        }
+        if (cmdStr === "openPayStore") {
+            const raw = vscode.workspace.getConfiguration("wukong").get("payStoreUrl");
+            const u = typeof raw === "string" && raw.trim() ? raw.trim() : DEFAULT_PAY_STORE_URL;
+            await vscode.env.openExternal(vscode.Uri.parse(u));
+            return;
+        }
+        if (cmdStr === "openMembershipPage") {
+            await vscode.commands.executeCommand("cursorFree.openMembershipPage");
+            return;
+        }
+        if (cmdStr === "openBillingPage") {
+            await vscode.commands.executeCommand("cursorFree.openBillingPage");
+            return;
+        }
+        // 选择文件夹
+        if (cmd === "selectFolder") {
+            try {
+                const result = await vscode.window.showOpenDialog({
+                    canSelectFiles: false,
+                    canSelectFolders: true,
+                    canSelectMany: false,
+                    openLabel: "选择工作区",
+                    title: "选择要配置 MCP 的工作区文件夹",
+                });
+                if (result && result.length > 0) {
+                    const selectedPath = result[0].fsPath;
+                    webview.postMessage({
+                        command: "folderSelected",
+                        path: selectedPath,
+                    });
+                }
+            }
+            catch (e) {
+                webview.postMessage({
+                    command: "folderSelected",
+                    path: null,
+                    error: String(e),
+                });
+            }
+            return;
+        }
+        /** 将当前窗口打开的工作区根路径填回侧栏输入框 */
+        if (cmd === "requestCurrentWorkspace") {
+            const folder = vscode.workspace.workspaceFolders?.[0];
+            if (folder) {
+                webview.postMessage({
+                    command: "folderSelected",
+                    path: folder.uri.fsPath,
+                    fromCurrentWorkspace: true,
+                });
+            }
+            else {
+                webview.postMessage({
+                    command: "folderSelected",
+                    path: null,
+                    error: "当前没有打开工作区，请先用「文件 → 打开文件夹」打开一个项目",
+                });
+            }
+            return;
+        }
+        // 配置工作区（带路径参数）
+        if (cmd === "configureWorkspace") {
+            const targetPath = message.path;
+            const orderRaw = message.sessionOrder;
+            const orderFromUi = Array.isArray(orderRaw) ? orderRaw.map((x) => String(x)) : undefined;
+            try {
+                const result = await vscode.commands.executeCommand("my.cursorMyUi.configureWorkspace", targetPath, orderFromUi);
+                const mcpList = (result?.sessionIds ?? []).map((id) => `my-mcp-${id}`).join("、");
+                webview.postMessage({
+                    command: "configResult",
+                    ok: true,
+                    msg: `已配置 MCP！\n工作区：${result?.workspacePath}\n已按当前侧栏注册 ${result?.sessionIds?.length ?? 0} 路：${mcpList || "（无）"}\n已清理本扩展在旧配置里多余的 my-mcp-* 项。\n配置文件：${result?.mcpPath}\n规则：${result?.rulePath}\n保存后 Cursor 会按新列表加载 MCP。`,
+                    workspacePath: result?.workspacePath,
+                });
+            }
+            catch (e) {
+                webview.postMessage({
+                    command: "configResult",
+                    ok: false,
+                    msg: String(e),
+                });
+            }
+            return;
+        }
+        if (cmd === "persistSessionOrder") {
+            const raw = message.order;
+            const next = normalizeSessionOrder(raw);
+            if (next.length === 0)
+                return;
+            void context.globalState.update(GLOBAL_STATE_SESSION_ORDER_KEY, next);
+            return;
+        }
+        if (cmd === "persistSessionMemos") {
+            const raw = message.memos;
+            if (!raw || typeof raw !== "object" || Array.isArray(raw))
+                return;
+            const next = {};
+            for (const [k, v] of Object.entries(raw)) {
+                if (!isValidSessionId(k))
+                    continue;
+                const s = String(v ?? "")
+                    .trim()
+                    .slice(0, MAX_SESSION_MEMO_CHARS);
+                if (s)
+                    next[k] = s;
+            }
+            void context.globalState.update(GLOBAL_STATE_SESSION_MEMOS_KEY, next);
+            return;
+        }
+        if (cmd === "copyCheckPhrase") {
+            const sid = String(message.sessionId ?? "1");
+            if (!isValidSessionId(sid)) {
+                return;
+            }
+            const phrase = `请使用 my-mcp-${sid} 的 check_messages`;
+            await vscode.env.clipboard.writeText(phrase);
+            webview.postMessage({ command: "copyPhraseResult", ok: true });
+            return;
+        }
+        if (cmd === "persistHistories") {
+            const payload = message.payload;
+            // 限制不超过 5 MB 的历史 JSON 字符串，防止长时间会话把 globalState 撑爆
+            const MAX_HIST_CHARS = 5 * 1024 * 1024;
+            if (typeof payload === "string" && payload.length <= MAX_HIST_CHARS) {
+                void context.globalState.update(GLOBAL_STATE_SESSION_KEY, payload);
+            }
+            return;
+        }
+        if (cmdStr === "voiceInputNative") {
+            if (process.platform !== "win32") {
+                webview.postMessage({
+                    command: "voiceInputResult",
+                    ok: false,
+                    msg: "系统语音仅支持 Windows",
+                });
+                return;
+            }
+            const r = await recognizeSpeechWindows(50000);
+            webview.postMessage({
+                command: "voiceInputResult",
+                ok: r.ok,
+                text: r.text ?? "",
+                msg: r.err ?? "",
+            });
+            return;
+        }
+        if (cmd === "sendMessage") {
+            const msgObj = message;
+            const text = String(msgObj.text ?? "").trim();
+            const workspacePath = msgObj.workspacePath;
+            const sessionId = String(msgObj.sessionId ?? "1");
+            if (!isValidSessionId(sessionId)) {
+                webview.postMessage({ command: "sendResult", ok: false, msg: "无效会话 ID（超出范围）" });
+                return;
+            }
+            const { images, files, error: attachErr } = parseSendAttachments(msgObj);
+            if (attachErr) {
+                webview.postMessage({ command: "sendResult", ok: false, msg: attachErr });
+                return;
+            }
+            if (!text && images.length === 0 && files.length === 0) {
+                webview.postMessage({
+                    command: "sendResult",
+                    ok: false,
+                    msg: "请输入文字或添加图片/文件",
+                });
+                return;
+            }
+            const queueDir = path.join(os.homedir(), ".cursor", "my-mcp-messages");
+            const sessionDir = path.join(queueDir, "s", sessionId);
+            const queuePath = path.join(sessionDir, "messages.json");
+            if (workspacePath) {
+                const workspaceInfoPath = path.join(queueDir, "workspace.json");
+                try {
+                    if (!fs.existsSync(queueDir))
+                        fs.mkdirSync(queueDir, { recursive: true });
+                    fs.writeFileSync(workspaceInfoPath, JSON.stringify({ workspacePath, time: new Date().toISOString() }, null, 2), "utf-8");
+                }
+                catch {
+                    // ignore
+                }
+            }
+            let data = { messages: [] };
+            let parseFailed = false;
+            try {
+                if (fs.existsSync(queuePath)) {
+                    const rawQueue = fs.readFileSync(queuePath, "utf-8");
+                    try {
+                        data = JSON.parse(rawQueue);
+                    }
+                    catch {
+                        // 解析失败时不直接用空数组覆盖，否则会把尚未消费的历史消息清零。
+                        // 先把坏文件改名存档、等待用户/MCP server 处理，然后按新建文件写入。
+                        parseFailed = true;
+                        try {
+                            const brokenPath = queuePath + ".broken-" + Date.now();
+                            fs.renameSync(queuePath, brokenPath);
+                        }
+                        catch { /* 若改名失败，下面 writeFileSync 也会覆盖 */ }
+                        data = { messages: [] };
+                    }
+                }
+            }
+            catch {
+                data = { messages: [] };
+            }
+            data.messages = Array.isArray(data.messages) ? data.messages : [];
+            // DoS 防护：单条 text ≤ 64 KB；单个会话队列最多 500 条
+            const MAX_MSG_TEXT_CHARS = 64 * 1024;
+            const MAX_QUEUE_LEN = 500;
+            if (text.length > MAX_MSG_TEXT_CHARS) {
+                webview.postMessage({ command: "sendResult", ok: false, msg: "单条文本超过 64KB 上限" });
+                return;
+            }
+            if (data.messages.length >= MAX_QUEUE_LEN) {
+                webview.postMessage({
+                    command: "sendResult",
+                    ok: false,
+                    msg: `队列已满（>${MAX_QUEUE_LEN} 条），请先在 Cursor 中通过 check_messages 消费一部分再发送`,
+                });
+                return;
+            }
+            const entry = {
+                text: text || (images.length || files.length ? "(附件)" : ""),
+                time: new Date().toISOString(),
+            };
+            if (images.length > 0)
+                entry.images = images;
+            if (files.length > 0)
+                entry.files = files;
+            data.messages.push(entry);
+            const attachmentLabels = [];
+            if (images.length > 0)
+                attachmentLabels.push(`图片 ×${images.length}`);
+            if (files.length > 0)
+                attachmentLabels.push(...files.map((f) => f.name));
+            try {
+                if (!fs.existsSync(sessionDir))
+                    fs.mkdirSync(sessionDir, { recursive: true });
+                fs.writeFileSync(queuePath, JSON.stringify(data, null, 2), "utf-8");
+                const suffix = parseFailed ? "（原队列文件损坏已归档为 .broken-*）" : "";
+                webview.postMessage({
+                    command: "sendResult",
+                    ok: true,
+                    msg: `已发送到 MCP-${sessionId}！在对应 Cursor 对话中说「请使用 my-mcp-${sessionId} 的 check_messages」获取。${suffix}`,
+                    text: text || "(仅附件)",
+                    attachmentLabels,
+                    sessionId,
+                });
+            }
+            catch (e) {
+                webview.postMessage({ command: "sendResult", ok: false, msg: String(e) });
+            }
+            return;
+        }
+        if (cmdStr === "detectCursorPath") {
+            try {
+                let jsPath = (typeof message.jsPath === "string" && message.jsPath.trim()) ? message.jsPath.trim() : null;
+                if (!jsPath || !fs.existsSync(jsPath)) {
+                    jsPath = await cursor_patcher_1.findCursorJsPathQuick();
+                }
+                const status = cursor_patcher_1.getPatchStatus(jsPath);
+                webview.postMessage({
+                    command: "membershipStatus",
+                    jsPath: jsPath || "",
+                    isPatched: !!status.isPatched,
+                    membershipType: status.membershipType || null,
+                    hasBackup: !!status.hasBackup,
+                    error: status.error || null,
+                });
+            } catch (e) {
+                webview.postMessage({
+                    command: "membershipStatus",
+                    jsPath: "",
+                    isPatched: false,
+                    membershipType: null,
+                    hasBackup: false,
+                    error: String(e && e.message ? e.message : e),
+                });
+            }
+            return;
+        }
+        if (cmdStr === "applyMembershipPatch" || cmdStr === "restoreMembership") {
+            try {
+                let jsPath = (typeof message.jsPath === "string" && message.jsPath.trim()) ? message.jsPath.trim() : null;
+                if (!jsPath) {
+                    jsPath = await cursor_patcher_1.findCursorJsPathQuick();
+                }
+                if (!jsPath) {
+                    webview.postMessage({ command: "membershipResult", ok: false, message: "未找到 Cursor 安装，请手动填写 workbench.desktop.main.js 路径" });
+                    return;
+                }
+                let membership = "";
+                if (cmdStr === "applyMembershipPatch") {
+                    membership = typeof message.membership === "string" ? message.membership.trim() : "";
+                    if (!membership) {
+                        webview.postMessage({ command: "membershipResult", ok: false, message: "会员类型不能为空" });
+                        return;
+                    }
+                }
+                const cursorRunning = cursor_patcher_1.isCursorRunningSync();
+                let autoRestart = false;
+                if (cursorRunning) {
+                    const pick = await vscode.window.showWarningMessage("检测到 Cursor 正在运行。补丁会先写入文件，随后可自动重启 Cursor 使其生效。\n\n⚠ 当前 Cursor 窗口会被关闭，请先保存未保存的文件。", { modal: true }, "继续（应用并重启）", "仅应用（手动重启）");
+                    if (pick !== "继续（应用并重启）" && pick !== "仅应用（手动重启）") {
+                        webview.postMessage({ command: "membershipResult", ok: false, message: "已取消" });
+                        return;
+                    }
+                    autoRestart = pick === "继续（应用并重启）";
+                }
+                const result = cmdStr === "applyMembershipPatch"
+                    ? cursor_patcher_1.applyPatch(jsPath, membership)
+                    : cursor_patcher_1.restorePatch(jsPath);
+                if (!result.ok) {
+                    webview.postMessage({ command: "membershipResult", ok: false, message: result.message || "操作失败" });
+                    return;
+                }
+                let resultMsg = result.message || "";
+                if (cursorRunning) {
+                    resultMsg += autoRestart ? "。Cursor 将在约 2 秒后自动重启…" : "。请手动关闭并重新打开 Cursor 使其生效。";
+                }
+                webview.postMessage({ command: "membershipResult", ok: true, message: resultMsg });
+                if (cursorRunning && autoRestart) {
+                    // 必须异步 detach，否则 kill Cursor.exe 会把扩展自身一并杀掉
+                    cursor_patcher_1.scheduleRestartCursor(jsPath, 2000);
+                }
+            } catch (e) {
+                webview.postMessage({ command: "membershipResult", ok: false, message: String(e && e.message ? e.message : e) });
+            }
+            return;
+        }
+        if (cmdStr === "restartCursor") {
+            try {
+                let jsPath = (typeof message.jsPath === "string" && message.jsPath.trim()) ? message.jsPath.trim() : null;
+                if (!jsPath) {
+                    jsPath = await cursor_patcher_1.findCursorJsPathQuick();
+                }
+                if (cursor_patcher_1.isCursorRunningSync()) {
+                    const r = cursor_patcher_1.scheduleRestartCursor(jsPath, 1500);
+                    webview.postMessage({
+                        command: "membershipResult",
+                        ok: !!r.ok,
+                        message: r.ok ? "Cursor 将在约 2 秒后自动重启…" : ("调度重启失败：" + (r.message || "未知错误")),
+                    });
+                }
+                else {
+                    const r = cursor_patcher_1.startCursor(jsPath);
+                    webview.postMessage({
+                        command: "membershipResult",
+                        ok: !!r.ok,
+                        message: r.ok ? ("已启动 Cursor：" + (r.exe || "")) : ("启动失败：" + (r.message || "未知错误")),
+                    });
+                }
+            } catch (e) {
+                webview.postMessage({ command: "membershipResult", ok: false, message: String(e && e.message ? e.message : e) });
+            }
+            return;
+        }
+        if (cmd === "ping") {
+            const text = String(message.text ?? "");
+            console.log(`[${viewType}] onDidReceiveMessage ping, text=`, text);
+            webview.postMessage({ command: "pong", text, time: new Date().toISOString() });
+        }
+    });
+    return { intervalId, disposable };
+}
 function activate(context) {
     console.log(`[${viewType}] activate() called`);
     // 配置工作区命令：接收目标路径参数
@@ -322,6 +819,36 @@ check_messages → 收到插件消息 → 【Cursor 完整回复】→ check_mes
 `;
         fs.writeFileSync(rulePath, ruleContent, "utf-8");
         return { mcpPath, rulePath, destDir, workspacePath, sessionIds: order };
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand("my.cursorMyUi.openMainPanel", () => {
+        if (mainSupermanPanel) {
+            mainSupermanPanel.reveal(vscode.ViewColumn.Active, false);
+            return;
+        }
+        const panel = vscode.window.createWebviewPanel("supermanMcp.mainPanel", "Superman MCP", vscode.ViewColumn.Active, {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: [context.extensionUri],
+        });
+        mainSupermanPanel = panel;
+        const nonce = getNonce();
+        const extVer = String(context.extension.packageJSON.version ?? "");
+        const payStoreRaw = vscode.workspace.getConfiguration("wukong").get("payStoreUrl");
+        const payStoreUrl = typeof payStoreRaw === "string" && payStoreRaw.trim() ? payStoreRaw.trim() : DEFAULT_PAY_STORE_URL;
+        panel.webview.html = getHtml(panel.webview, nonce, extVer, payStoreUrl);
+        const { intervalId, disposable } = attachMainWebviewApp(context, panel.webview);
+        panel.onDidDispose(() => {
+            try {
+                disposable.dispose();
+            }
+            catch {
+                // ignore
+            }
+            clearInterval(intervalId);
+            if (mainSupermanPanel === panel) {
+                mainSupermanPanel = undefined;
+            }
+        });
     }));
     context.subscriptions.push(vscode.commands.registerCommand("wukong.generateLicenseKey", async () => {
         const adminPwd = vscode.workspace.getConfiguration("wukong").get("adminPassword") ?? "";
@@ -845,496 +1372,16 @@ check_messages → 收到插件消息 → 【Cursor 完整回复】→ check_mes
             const payStoreRaw = vscode.workspace.getConfiguration("wukong").get("payStoreUrl");
             const payStoreUrl = typeof payStoreRaw === "string" && payStoreRaw.trim() ? payStoreRaw.trim() : DEFAULT_PAY_STORE_URL;
             webviewView.webview.html = getHtml(webviewView.webview, nonce, extVer, payStoreUrl);
-            const queueDirFixed = path.join(os.homedir(), ".cursor", "my-mcp-messages");
-            const lastReplyBySession = {};
-            for (let n = 1; n <= MAX_WUKONG_SESSIONS; n++) {
-                lastReplyBySession[String(n)] = "";
-            }
-            const pollIntervalMs = 800;
-            const intervalId = setInterval(() => {
-                for (let n = 1; n <= MAX_WUKONG_SESSIONS; n++) {
-                    const sid = String(n);
-                    try {
-                        const replyPath = path.join(queueDirFixed, "s", sid, "reply.json");
-                        if (!fs.existsSync(replyPath))
-                            continue;
-                        const raw = fs.readFileSync(replyPath, "utf-8");
-                        const parsed = JSON.parse(raw);
-                        const ts = String(parsed.timestamp ?? "");
-                        if (!ts || ts === lastReplyBySession[sid])
-                            continue;
-                        lastReplyBySession[sid] = ts;
-                        const reply = String(parsed.reply ?? "");
-                        webviewView.webview.postMessage({
-                            command: "cursorReply",
-                            reply,
-                            time: ts,
-                            sessionId: sid,
-                        });
-                        try {
-                            fs.unlinkSync(replyPath);
-                        }
-                        catch {
-                            // ignore
-                        }
-                    }
-                    catch {
-                        // ignore
-                    }
+            const { intervalId, disposable } = attachMainWebviewApp(context, webviewView.webview);
+            webviewView.onDidDispose(() => {
+                try {
+                    disposable.dispose();
                 }
-            }, pollIntervalMs);
-            const sessionOrder = readSessionOrder(context);
-            setTimeout(() => {
-                webviewView.webview.postMessage({ command: "restoreSessionOrder", order: sessionOrder });
-                webviewView.webview.postMessage({ command: "restoreSessionMemos", memos: readSessionMemos(context) });
-            }, 50);
-            const savedHist = context.globalState.get(GLOBAL_STATE_SESSION_KEY);
-            if (savedHist) {
-                setTimeout(() => {
-                    webviewView.webview.postMessage({ command: "restoreHistories", payload: savedHist });
-                }, 100);
-            }
-            const disposable = webviewView.webview.onDidReceiveMessage(async (message) => {
-                if (!message || typeof message !== "object")
-                    return;
-                const cmd = message.command;
-                const cmdStr = typeof cmd === "string" ? cmd : "";
-                if (cmdStr === "requestLicenseStatus") {
-                    (0, license_1.clearExpiredLicenseIfNeeded)(context);
-                    (0, license_1.clearExpiredTrialIfNeeded)(context);
-                    await (0, license_1.enforceCloudLicenseRevocationCheck)(context);
-                    (0, license_1.clearExpiredLicenseIfNeeded)(context);
-                    webviewView.webview.postMessage({
-                        command: "licenseStatus",
-                        ...(0, license_1.getLicenseStatusForWebview)(context),
-                    });
-                    return;
+                catch {
+                    // ignore
                 }
-                if (cmdStr === "activateLicense") {
-                    const key = String(message.key ?? "");
-                    const r = await (0, license_1.tryActivateLicenseAsync)(context, key);
-                    webviewView.webview.postMessage({
-                        command: "licenseActivationResult",
-                        ok: r.ok,
-                        msg: r.msg,
-                    });
-                    if (r.ok) {
-                        webviewView.webview.postMessage({
-                            command: "licenseStatus",
-                            ...(0, license_1.getLicenseStatusForWebview)(context),
-                        });
-                        const ord = readSessionOrder(context);
-                        webviewView.webview.postMessage({ command: "restoreSessionOrder", order: ord });
-                        webviewView.webview.postMessage({ command: "restoreSessionMemos", memos: readSessionMemos(context) });
-                        const hist = context.globalState.get(GLOBAL_STATE_SESSION_KEY);
-                        if (hist) {
-                            webviewView.webview.postMessage({ command: "restoreHistories", payload: hist });
-                        }
-                    }
-                    return;
-                }
-                if (cmdStr === "startTrial30") {
-                    const r = (0, license_1.tryStartTrial30)(context);
-                    webviewView.webview.postMessage({
-                        command: "trialResult",
-                        ok: r.ok,
-                        msg: r.msg,
-                    });
-                    if (r.ok) {
-                        webviewView.webview.postMessage({
-                            command: "licenseStatus",
-                            ...(0, license_1.getLicenseStatusForWebview)(context),
-                        });
-                        const ord = readSessionOrder(context);
-                        webviewView.webview.postMessage({ command: "restoreSessionOrder", order: ord });
-                        webviewView.webview.postMessage({ command: "restoreSessionMemos", memos: readSessionMemos(context) });
-                        const hist = context.globalState.get(GLOBAL_STATE_SESSION_KEY);
-                        if (hist) {
-                            webviewView.webview.postMessage({ command: "restoreHistories", payload: hist });
-                        }
-                    }
-                    return;
-                }
-                if (cmdStr === "deactivateLicense") {
-                    const choice = await vscode.window.showWarningMessage("确定注销激活？清除后需重新输入卡密才能使用本扩展。", { modal: true }, "确定注销");
-                    if (choice !== "确定注销") {
-                        return;
-                    }
-                    await (0, license_1.clearLicenseState)(context);
-                    await (0, license_1.clearTrialUntilState)(context);
-                    webviewView.webview.postMessage({
-                        command: "licenseStatus",
-                        ...(0, license_1.getLicenseStatusForWebview)(context),
-                    });
-                    void vscode.window.showInformationMessage("已注销激活");
-                    return;
-                }
-                if (cmdStr === "openPayStore") {
-                    const raw = vscode.workspace.getConfiguration("wukong").get("payStoreUrl");
-                    const u = typeof raw === "string" && raw.trim() ? raw.trim() : DEFAULT_PAY_STORE_URL;
-                    await vscode.env.openExternal(vscode.Uri.parse(u));
-                    return;
-                }
-                if (cmdStr === "openMembershipPage") {
-                    await vscode.commands.executeCommand("cursorFree.openMembershipPage");
-                    return;
-                }
-                if (cmdStr === "openBillingPage") {
-                    await vscode.commands.executeCommand("cursorFree.openBillingPage");
-                    return;
-                }
-                // 选择文件夹
-                if (cmd === "selectFolder") {
-                    try {
-                        const result = await vscode.window.showOpenDialog({
-                            canSelectFiles: false,
-                            canSelectFolders: true,
-                            canSelectMany: false,
-                            openLabel: "选择工作区",
-                            title: "选择要配置 MCP 的工作区文件夹",
-                        });
-                        if (result && result.length > 0) {
-                            const selectedPath = result[0].fsPath;
-                            webviewView.webview.postMessage({
-                                command: "folderSelected",
-                                path: selectedPath,
-                            });
-                        }
-                    }
-                    catch (e) {
-                        webviewView.webview.postMessage({
-                            command: "folderSelected",
-                            path: null,
-                            error: String(e),
-                        });
-                    }
-                    return;
-                }
-                /** 将当前窗口打开的工作区根路径填回侧栏输入框 */
-                if (cmd === "requestCurrentWorkspace") {
-                    const folder = vscode.workspace.workspaceFolders?.[0];
-                    if (folder) {
-                        webviewView.webview.postMessage({
-                            command: "folderSelected",
-                            path: folder.uri.fsPath,
-                            fromCurrentWorkspace: true,
-                        });
-                    }
-                    else {
-                        webviewView.webview.postMessage({
-                            command: "folderSelected",
-                            path: null,
-                            error: "当前没有打开工作区，请先用「文件 → 打开文件夹」打开一个项目",
-                        });
-                    }
-                    return;
-                }
-                // 配置工作区（带路径参数）
-                if (cmd === "configureWorkspace") {
-                    const targetPath = message.path;
-                    const orderRaw = message.sessionOrder;
-                    const orderFromUi = Array.isArray(orderRaw) ? orderRaw.map((x) => String(x)) : undefined;
-                    try {
-                        const result = await vscode.commands.executeCommand("my.cursorMyUi.configureWorkspace", targetPath, orderFromUi);
-                        const mcpList = (result?.sessionIds ?? []).map((id) => `my-mcp-${id}`).join("、");
-                        webviewView.webview.postMessage({
-                            command: "configResult",
-                            ok: true,
-                            msg: `已配置 MCP！\n工作区：${result?.workspacePath}\n已按当前侧栏注册 ${result?.sessionIds?.length ?? 0} 路：${mcpList || "（无）"}\n已清理本扩展在旧配置里多余的 my-mcp-* 项。\n配置文件：${result?.mcpPath}\n规则：${result?.rulePath}\n保存后 Cursor 会按新列表加载 MCP。`,
-                            workspacePath: result?.workspacePath,
-                        });
-                    }
-                    catch (e) {
-                        webviewView.webview.postMessage({
-                            command: "configResult",
-                            ok: false,
-                            msg: String(e),
-                        });
-                    }
-                    return;
-                }
-                if (cmd === "persistSessionOrder") {
-                    const raw = message.order;
-                    const next = normalizeSessionOrder(raw);
-                    if (next.length === 0)
-                        return;
-                    void context.globalState.update(GLOBAL_STATE_SESSION_ORDER_KEY, next);
-                    return;
-                }
-                if (cmd === "persistSessionMemos") {
-                    const raw = message.memos;
-                    if (!raw || typeof raw !== "object" || Array.isArray(raw))
-                        return;
-                    const next = {};
-                    for (const [k, v] of Object.entries(raw)) {
-                        if (!isValidSessionId(k))
-                            continue;
-                        const s = String(v ?? "")
-                            .trim()
-                            .slice(0, MAX_SESSION_MEMO_CHARS);
-                        if (s)
-                            next[k] = s;
-                    }
-                    void context.globalState.update(GLOBAL_STATE_SESSION_MEMOS_KEY, next);
-                    return;
-                }
-                if (cmd === "copyCheckPhrase") {
-                    const sid = String(message.sessionId ?? "1");
-                    if (!isValidSessionId(sid)) {
-                        return;
-                    }
-                    const phrase = `请使用 my-mcp-${sid} 的 check_messages`;
-                    await vscode.env.clipboard.writeText(phrase);
-                    webviewView.webview.postMessage({ command: "copyPhraseResult", ok: true });
-                    return;
-                }
-                if (cmd === "persistHistories") {
-                    const payload = message.payload;
-                    // 限制不超过 5 MB 的历史 JSON 字符串，防止长时间会话把 globalState 撑爆
-                    const MAX_HIST_CHARS = 5 * 1024 * 1024;
-                    if (typeof payload === "string" && payload.length <= MAX_HIST_CHARS) {
-                        void context.globalState.update(GLOBAL_STATE_SESSION_KEY, payload);
-                    }
-                    return;
-                }
-                if (cmdStr === "voiceInputNative") {
-                    if (process.platform !== "win32") {
-                        webviewView.webview.postMessage({
-                            command: "voiceInputResult",
-                            ok: false,
-                            msg: "系统语音仅支持 Windows",
-                        });
-                        return;
-                    }
-                    const r = await recognizeSpeechWindows(50000);
-                    webviewView.webview.postMessage({
-                        command: "voiceInputResult",
-                        ok: r.ok,
-                        text: r.text ?? "",
-                        msg: r.err ?? "",
-                    });
-                    return;
-                }
-                if (cmd === "sendMessage") {
-                    const msgObj = message;
-                    const text = String(msgObj.text ?? "").trim();
-                    const workspacePath = msgObj.workspacePath;
-                    const sessionId = String(msgObj.sessionId ?? "1");
-                    if (!isValidSessionId(sessionId)) {
-                        webviewView.webview.postMessage({ command: "sendResult", ok: false, msg: "无效会话 ID（超出范围）" });
-                        return;
-                    }
-                    const { images, files, error: attachErr } = parseSendAttachments(msgObj);
-                    if (attachErr) {
-                        webviewView.webview.postMessage({ command: "sendResult", ok: false, msg: attachErr });
-                        return;
-                    }
-                    if (!text && images.length === 0 && files.length === 0) {
-                        webviewView.webview.postMessage({
-                            command: "sendResult",
-                            ok: false,
-                            msg: "请输入文字或添加图片/文件",
-                        });
-                        return;
-                    }
-                    const queueDir = path.join(os.homedir(), ".cursor", "my-mcp-messages");
-                    const sessionDir = path.join(queueDir, "s", sessionId);
-                    const queuePath = path.join(sessionDir, "messages.json");
-                    if (workspacePath) {
-                        const workspaceInfoPath = path.join(queueDir, "workspace.json");
-                        try {
-                            if (!fs.existsSync(queueDir))
-                                fs.mkdirSync(queueDir, { recursive: true });
-                            fs.writeFileSync(workspaceInfoPath, JSON.stringify({ workspacePath, time: new Date().toISOString() }, null, 2), "utf-8");
-                        }
-                        catch {
-                            // ignore
-                        }
-                    }
-                    let data = { messages: [] };
-                    let parseFailed = false;
-                    try {
-                        if (fs.existsSync(queuePath)) {
-                            const rawQueue = fs.readFileSync(queuePath, "utf-8");
-                            try {
-                                data = JSON.parse(rawQueue);
-                            }
-                            catch {
-                                // 解析失败时不直接用空数组覆盖，否则会把尚未消费的历史消息清零。
-                                // 先把坏文件改名存档、等待用户/MCP server 处理，然后按新建文件写入。
-                                parseFailed = true;
-                                try {
-                                    const brokenPath = queuePath + ".broken-" + Date.now();
-                                    fs.renameSync(queuePath, brokenPath);
-                                }
-                                catch { /* 若改名失败，下面 writeFileSync 也会覆盖 */ }
-                                data = { messages: [] };
-                            }
-                        }
-                    }
-                    catch {
-                        data = { messages: [] };
-                    }
-                    data.messages = Array.isArray(data.messages) ? data.messages : [];
-                    // DoS 防护：单条 text ≤ 64 KB；单个会话队列最多 500 条
-                    const MAX_MSG_TEXT_CHARS = 64 * 1024;
-                    const MAX_QUEUE_LEN = 500;
-                    if (text.length > MAX_MSG_TEXT_CHARS) {
-                        webviewView.webview.postMessage({ command: "sendResult", ok: false, msg: "单条文本超过 64KB 上限" });
-                        return;
-                    }
-                    if (data.messages.length >= MAX_QUEUE_LEN) {
-                        webviewView.webview.postMessage({
-                            command: "sendResult",
-                            ok: false,
-                            msg: `队列已满（>${MAX_QUEUE_LEN} 条），请先在 Cursor 中通过 check_messages 消费一部分再发送`,
-                        });
-                        return;
-                    }
-                    const entry = {
-                        text: text || (images.length || files.length ? "(附件)" : ""),
-                        time: new Date().toISOString(),
-                    };
-                    if (images.length > 0)
-                        entry.images = images;
-                    if (files.length > 0)
-                        entry.files = files;
-                    data.messages.push(entry);
-                    const attachmentLabels = [];
-                    if (images.length > 0)
-                        attachmentLabels.push(`图片 ×${images.length}`);
-                    if (files.length > 0)
-                        attachmentLabels.push(...files.map((f) => f.name));
-                    try {
-                        if (!fs.existsSync(sessionDir))
-                            fs.mkdirSync(sessionDir, { recursive: true });
-                        fs.writeFileSync(queuePath, JSON.stringify(data, null, 2), "utf-8");
-                        const suffix = parseFailed ? "（原队列文件损坏已归档为 .broken-*）" : "";
-                        webviewView.webview.postMessage({
-                            command: "sendResult",
-                            ok: true,
-                            msg: `已发送到 MCP-${sessionId}！在对应 Cursor 对话中说「请使用 my-mcp-${sessionId} 的 check_messages」获取。${suffix}`,
-                            text: text || "(仅附件)",
-                            attachmentLabels,
-                            sessionId,
-                        });
-                    }
-                    catch (e) {
-                        webviewView.webview.postMessage({ command: "sendResult", ok: false, msg: String(e) });
-                    }
-                    return;
-                }
-                if (cmdStr === "detectCursorPath") {
-                    try {
-                        let jsPath = (typeof message.jsPath === "string" && message.jsPath.trim()) ? message.jsPath.trim() : null;
-                        if (!jsPath || !fs.existsSync(jsPath)) {
-                            jsPath = await cursor_patcher_1.findCursorJsPathQuick();
-                        }
-                        const status = cursor_patcher_1.getPatchStatus(jsPath);
-                        webviewView.webview.postMessage({
-                            command: "membershipStatus",
-                            jsPath: jsPath || "",
-                            isPatched: !!status.isPatched,
-                            membershipType: status.membershipType || null,
-                            hasBackup: !!status.hasBackup,
-                            error: status.error || null,
-                        });
-                    } catch (e) {
-                        webviewView.webview.postMessage({
-                            command: "membershipStatus",
-                            jsPath: "",
-                            isPatched: false,
-                            membershipType: null,
-                            hasBackup: false,
-                            error: String(e && e.message ? e.message : e),
-                        });
-                    }
-                    return;
-                }
-                if (cmdStr === "applyMembershipPatch" || cmdStr === "restoreMembership") {
-                    try {
-                        let jsPath = (typeof message.jsPath === "string" && message.jsPath.trim()) ? message.jsPath.trim() : null;
-                        if (!jsPath) {
-                            jsPath = await cursor_patcher_1.findCursorJsPathQuick();
-                        }
-                        if (!jsPath) {
-                            webviewView.webview.postMessage({ command: "membershipResult", ok: false, message: "未找到 Cursor 安装，请手动填写 workbench.desktop.main.js 路径" });
-                            return;
-                        }
-                        let membership = "";
-                        if (cmdStr === "applyMembershipPatch") {
-                            membership = typeof message.membership === "string" ? message.membership.trim() : "";
-                            if (!membership) {
-                                webviewView.webview.postMessage({ command: "membershipResult", ok: false, message: "会员类型不能为空" });
-                                return;
-                            }
-                        }
-                        const cursorRunning = cursor_patcher_1.isCursorRunningSync();
-                        let autoRestart = false;
-                        if (cursorRunning) {
-                            const pick = await vscode.window.showWarningMessage("检测到 Cursor 正在运行。补丁会先写入文件，随后可自动重启 Cursor 使其生效。\n\n⚠ 当前 Cursor 窗口会被关闭，请先保存未保存的文件。", { modal: true }, "继续（应用并重启）", "仅应用（手动重启）");
-                            if (pick !== "继续（应用并重启）" && pick !== "仅应用（手动重启）") {
-                                webviewView.webview.postMessage({ command: "membershipResult", ok: false, message: "已取消" });
-                                return;
-                            }
-                            autoRestart = pick === "继续（应用并重启）";
-                        }
-                        const result = cmdStr === "applyMembershipPatch"
-                            ? cursor_patcher_1.applyPatch(jsPath, membership)
-                            : cursor_patcher_1.restorePatch(jsPath);
-                        if (!result.ok) {
-                            webviewView.webview.postMessage({ command: "membershipResult", ok: false, message: result.message || "操作失败" });
-                            return;
-                        }
-                        let resultMsg = result.message || "";
-                        if (cursorRunning) {
-                            resultMsg += autoRestart ? "。Cursor 将在约 2 秒后自动重启…" : "。请手动关闭并重新打开 Cursor 使其生效。";
-                        }
-                        webviewView.webview.postMessage({ command: "membershipResult", ok: true, message: resultMsg });
-                        if (cursorRunning && autoRestart) {
-                            // 必须异步 detach，否则 kill Cursor.exe 会把扩展自身一并杀掉
-                            cursor_patcher_1.scheduleRestartCursor(jsPath, 2000);
-                        }
-                    } catch (e) {
-                        webviewView.webview.postMessage({ command: "membershipResult", ok: false, message: String(e && e.message ? e.message : e) });
-                    }
-                    return;
-                }
-                if (cmdStr === "restartCursor") {
-                    try {
-                        let jsPath = (typeof message.jsPath === "string" && message.jsPath.trim()) ? message.jsPath.trim() : null;
-                        if (!jsPath) {
-                            jsPath = await cursor_patcher_1.findCursorJsPathQuick();
-                        }
-                        if (cursor_patcher_1.isCursorRunningSync()) {
-                            const r = cursor_patcher_1.scheduleRestartCursor(jsPath, 1500);
-                            webviewView.webview.postMessage({
-                                command: "membershipResult",
-                                ok: !!r.ok,
-                                message: r.ok ? "Cursor 将在约 2 秒后自动重启…" : ("调度重启失败：" + (r.message || "未知错误")),
-                            });
-                        }
-                        else {
-                            const r = cursor_patcher_1.startCursor(jsPath);
-                            webviewView.webview.postMessage({
-                                command: "membershipResult",
-                                ok: !!r.ok,
-                                message: r.ok ? ("已启动 Cursor：" + (r.exe || "")) : ("启动失败：" + (r.message || "未知错误")),
-                            });
-                        }
-                    } catch (e) {
-                        webviewView.webview.postMessage({ command: "membershipResult", ok: false, message: String(e && e.message ? e.message : e) });
-                    }
-                    return;
-                }
-                if (cmd === "ping") {
-                    const text = String(message.text ?? "");
-                    console.log(`[${viewType}] onDidReceiveMessage ping, text=`, text);
-                    webviewView.webview.postMessage({ command: "pong", text, time: new Date().toISOString() });
-                }
+                clearInterval(intervalId);
             });
-            context.subscriptions.push(disposable);
-            context.subscriptions.push({ dispose: () => clearInterval(intervalId) });
         },
     };
     context.subscriptions.push(vscode.window.registerWebviewViewProvider(viewType, provider, {
