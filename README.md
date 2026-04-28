@@ -136,7 +136,7 @@ Cursor-free/
 
 ## 交流与支持
 
-- QQ 交流群：**1087432681**
+- QQ 交流群：1087432681
 - 赞助 / 购买：<https://pay.ldxp.cn/shop/superman>
 
 ## 鸣谢与许可
