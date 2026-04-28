@@ -1,0 +1,164 @@
+{
+	"name": "cursor-free-plus",
+	"displayName": "Infinity助手",
+	"description": "Infinity 助手：免卡密版 Cursor 增强插件。侧栏多路 MCP（check_messages/send_message/ask_question，多窗口独立会话），内置 Cursor 会员类型切换器（Free/Pro/Pro+/Ultra/Enterprise 一键补丁，独立设置页面）。",
+	"version": "1.4.0",
+	"publisher": "cursor-free",
+	"license": "MIT",
+	"keywords": [
+		"mcp",
+		"cursor",
+		"model context protocol",
+		"multi-session",
+		"sidebar",
+		"membership",
+		"cursor-free",
+		"wukong",
+		"悟空",
+		"chat",
+		"check_messages"
+	],
+	"categories": [
+		"Other"
+	],
+	"engines": {
+		"vscode": "^1.71.0"
+	},
+	"main": "./dist/extension.js",
+	"activationEvents": [
+		"onView:my.cursorMyUi",
+		"onCommand:my.cursorMyUi.configureWorkspace",
+		"onCommand:cursorFree.applyMembershipPatch",
+		"onCommand:cursorFree.restoreMembership",
+		"onCommand:cursorFree.detectCursorPath",
+		"onCommand:cursorFree.openMembershipPage",
+		"onCommand:cursorFree.openBillingPage"
+	],
+	"contributes": {
+		"commands": [
+			{
+				"command": "my.cursorMyUi.configureWorkspace",
+				"title": "配置工作区（MCP）",
+				"category": "Infinity助手"
+			},
+			{
+				"command": "cursorFree.applyMembershipPatch",
+				"title": "应用会员补丁",
+				"category": "Infinity助手"
+			},
+			{
+				"command": "cursorFree.restoreMembership",
+				"title": "恢复原始会员文件",
+				"category": "Infinity助手"
+			},
+			{
+				"command": "cursorFree.detectCursorPath",
+				"title": "检测 Cursor 安装路径",
+				"category": "Infinity助手"
+			},
+			{
+				"command": "cursorFree.openMembershipPage",
+				"title": "打开会员类型设置",
+				"category": "Infinity助手"
+			},
+			{
+				"command": "cursorFree.openBillingPage",
+				"title": "打开账单与用量",
+				"category": "Infinity助手"
+			}
+		],
+		"configuration": {
+			"title": "Infinity助手",
+			"properties": {
+				"wukong.licenseSecret": {
+					"type": "string",
+					"default": "",
+					"description": "[已弃用] 免卡密版本不再使用此密钥，仅为兼容保留。"
+				},
+				"wukong.adminPassword": {
+					"type": "string",
+					"default": "",
+					"description": "[已弃用] 免卡密版本不再使用管理员密码，仅为兼容保留。"
+				},
+				"wukong.redeemApiBaseUrl": {
+					"type": "string",
+					"default": "",
+					"description": "[已弃用] 免卡密版本不再请求云端核销，仅为兼容保留。"
+				},
+				"wukong.payStoreUrl": {
+					"type": "string",
+					"default": "https://pay.ldxp.cn/shop/superman",
+					"description": "侧栏「在线购买」按钮跳转的支付页 URL。"
+				},
+				"wukong.redeemTimeoutMs": {
+					"type": "number",
+					"default": 20000,
+					"description": "[已弃用] 免卡密版本不再请求云端核销，仅为兼容保留。"
+				},
+				"wukong.cloudLicenseOnly": {
+					"type": "boolean",
+					"default": false,
+					"description": "[已弃用] 免卡密版本恒为 false。"
+				},
+				"wukong.cloudLicenseVerifyIntervalMs": {
+					"type": "number",
+					"default": 900000,
+					"description": "[已弃用] 免卡密版本不再发起吊销校验。"
+				},
+				"cursorFree.supportGroupQQ": {
+					"type": "string",
+					"default": "1087432681",
+					"description": "交流群 QQ 号，显示在侧栏底部。"
+				},
+				"cursorFree.defaultMembership": {
+					"type": "string",
+					"enum": [
+						"free",
+						"free_trial",
+						"pro",
+						"pro_plus",
+						"ultra",
+						"enterprise"
+					],
+					"default": "pro",
+					"description": "默认选中的会员类型。"
+				}
+			}
+		},
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "wukong-mcp",
+					"title": "Infinity助手",
+					"icon": "resources/icon.svg"
+				}
+			]
+		},
+		"views": {
+			"wukong-mcp": [
+				{
+					"type": "webview",
+					"id": "my.cursorMyUi",
+					"name": "Infinity助手"
+				}
+			]
+		}
+	},
+	"scripts": {
+		"compile": "tsc -p . && node scripts/copy-vendor.js",
+		"watch": "tsc -p . -w",
+		"vendor": "node scripts/copy-vendor.js",
+		"package": "npm run compile && vsce package --no-dependencies --allow-missing-repository",
+		"postinstall": "cd mcp-server && npm install"
+	},
+	"devDependencies": {
+		"@types/node": "^16.18.0",
+		"@types/vscode": "^1.71.0",
+		"@vscode/vsce": "^3.7.0",
+		"ts-node": "^10.9.2",
+		"typescript": "^4.7.4"
+	},
+	"dependencies": {
+		"sql.js": "^1.14.1"
+	}
+}

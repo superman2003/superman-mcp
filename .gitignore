@@ -1,0 +1,18 @@
+node_modules/
+mcp-server/node_modules/
+dist/
+*.vsix
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+
+# 参考源（仅本地参照，不推送到远程）
+ref-wkmcp-pjb/
+
+# 本地账单/调试缓存
+.billing-cache/
+smoke-*.json
